@@ -5,7 +5,7 @@
 #              seros, H-Bridges and digital outputs using a PCA9685 board     
 # Author:      Bernd Hinze
 #
-# Created:     28.01.2019
+# Created:     10.04.2019
 # Copyright:   (c) Bernd Hinze 2019
 # Licence:     MIT see https://opensource.org/licenses/MIT
 # -------------------------------------------------------------------------------
@@ -16,12 +16,12 @@ import os
 import fcntl
 import struct
 from threading import Thread
-from pca9685 import PCA9685   # PWM Board Package
+from pca9685 import PCA9685, SIM   # PWM Board Package
 
 
 class Utility(): 
     def get_ip_address(ifname):
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
         try:
             return socket.inet_ntoa(fcntl.ioctl(s.fileno(), 0x8915,
                 struct.pack('256s', ifname[:15]))[20:24])
@@ -38,6 +38,8 @@ class Utility():
 
 
 class PWM_Controller(PCA9685):
+    '''
+    '''
     def __init__(self, i_min, i_max, freq, L298s = [], Dios=[], Inv = []):
         PCA9685.__init__(self)
         self.freq = freq
@@ -49,9 +51,17 @@ class PWM_Controller(PCA9685):
         self.L298Chs = L298s
         self.Dios = Dios
         self.Inv = Inv
+        self.FSave = []
+        for i in range(16):
+            self.FSave.append(127) 
+        self.ChTidef = [],[]
         self.servo_min =  int(round(((self.i_min * self.freq) / 1000) * 4095))
         self.servo_max =  int(round(((self.i_max * self.freq) / 1000) * 4095))  
-        self.diff = self.servo_max - self.servo_min        
+        self.diff = self.servo_max - self.servo_min                 
+        (self.ix_min, self.ix_diff) = range(2)      
+        for i in range(16):
+            self.ChTidef[self.ix_min].append(self.servo_min)
+            self.ChTidef[self.ix_diff].append(self.diff)   
         self.calc_puls_table()
         # update of pulstable for LM298 purposes
         i = 0
@@ -69,7 +79,30 @@ class PWM_Controller(PCA9685):
         ri = 254
         for i in range (255):
             self.invert_input.append(ri - i )
+            
+    def calc_puls_table (self):
+        """ 
+        """
+        for c in range (16):
+            ptab = []
+            for i in range(255):                 
+                ptab.append(int((self.ChTidef[self.ix_diff][c] * i/254) + \
+                                self.ChTidef[self.ix_min][c])) 
+            self.imp_tab.append(ptab) 
+            
+    def imp_val (self, val):
+        return int(round(((val * self.freq) / 1000) * 4095))
     
+    def diff_val (self, min_val, max_val):
+        return self.imp_val(max_val) - self.imp_val(min_val)
+    
+    def adjustCh (self, min_val, max_val, ch):
+        self.ChTidef[self.ix_min][ch] = self.imp_val(min_val)       
+        self.ChTidef[self.ix_diff][ch] = self.diff_val(min_val, max_val)
+        for i in range(255):                 
+                self.imp_tab[ch][i]=(int((self.ChTidef[self.ix_diff][ch] * i/254) \
+                        + self.ChTidef[self.ix_min][ch])) 
+
     def calc_puls_table_L298 (self, chan):
         """ call after 'calc_puls_table'
         """
@@ -80,44 +113,35 @@ class PWM_Controller(PCA9685):
                  tab.append(int(diff -(diff * i/127)))
             else: 
                  tab.append(int(diff * (i-127)/127))
-        self.imp_tab[chan] = tab
-        
-    def calc_puls_table (self):
-        """ 
-        """
-        ttab = []
-        for i in range(255):  
-            ttab.append(int((self.diff * i/254) + self.servo_min)) 
-        for c in range (16):
-            self.imp_tab.append(ttab)   
+        self.imp_tab[chan] = tab                    
             
-    def trimm_chan (self, chan, trimm):
+    def trimm_chan (self, ch, trimm):
         ''' trim is a value in range 0 .. 50 and shifts the 
             table values of ((trim-25)/254 * self.diff)    
         '''
-        if (chan in self.L298Chs):
+        if (ch in self.L298Chs):
             pass
         else:         
-            korr = (trimm - 25)/254 * self.diff
-            #print 'korr', korr
+            korr = (trimm - 25)/254 * self.ChTidef[self.ix_diff][ch]
             if  (trimm < 51):
-                for i in range(254):
-                    self.imp_tab[chan][i] = \
-                        int(((self.diff * i/254) + self.servo_min) + korr)  
-        
+                for i in range(255):
+                    self.imp_tab[ch][i] = \
+                        int(((self.ChTidef[self.ix_diff][ch] * i/254) \
+                        + self.ChTidef[self.ix_min][ch]) + korr)  
+    
+    def set_fail_save_pos (self, chan, val):
+        self.FSave[chan] = val
+
     def fail_safe(self):
         for i in range(16):
             if (i in self.Dios):
-                if (i in self.Inv):
-                    self.update_Dio(i, 254)       
-                else:
-                    self.update_Dio(i, 0)
+                self.update_Dio(i, self.FSave[i])
             elif (i in self.L298Chs): 
                 idx = self.L298Chs.index(i)
                 if (idx % 3) == 0:
-                    self.update_L298(i, 127)   # powerless
+                    self.update_L298(i, self.FSave[i])
             else: 
-                self.update_Servo(i, 127)  # center position
+                self.update_Servo(i, self.FSave[i])  
                                
     def update_L298(self, chan, remote_inp):
         self.set_pwm(chan, 0, self.imp_tab[chan][remote_inp])
@@ -150,7 +174,7 @@ class PWM_Controller(PCA9685):
             self.update_Servo(chan, inp)
             
     def update(self, msg):
-        ''' calling the boad update function 
+        ''' calling the board update function 
             with extracted channel and set value
         '''
         self.rtime = time.time()
@@ -252,7 +276,10 @@ def main():
     DIOs = [3]
     Inverted = []  
     SC = PWM_Controller(1.0, 2.0, 50, L298Channels, DIOs, Inverted)
+    #SC.adjustCh(0.95, 1.75, 4) 
+    #SC.set_fail_save_pos(0, 0)
     SC.fail_safe()
+    SC.update_ch(6, 254) # live indication after start up (LED)
     S = UDP_Client(SC,'', 6000, 6100, 10, "RC#001")
     O = Observer(SC, 30.0, "RC#001")
 
