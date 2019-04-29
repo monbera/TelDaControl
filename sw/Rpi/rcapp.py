@@ -5,7 +5,7 @@
 #              seros, H-Bridges and digital outputs using a PCA9685 board     
 # Author:      Bernd Hinze
 #
-# Created:     10.04.2019
+# Created:     30.04.2019
 # Copyright:   (c) Bernd Hinze 2019
 # Licence:     MIT see https://opensource.org/licenses/MIT
 # -------------------------------------------------------------------------------
@@ -20,6 +20,8 @@ from pca9685 import PCA9685, SIM   # PWM Board Package
 
 
 class Utility(): 
+    ''' Static methods to get IP-adresses
+    '''
     def get_ip_address(ifname):
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
         try:
@@ -38,37 +40,62 @@ class Utility():
 
 
 class PWM_Controller(PCA9685):
-    '''
+    ''' Extends the PCA9685 class with a user specific API.
+    
+    Parameter: 
+        i_min, i_max: Default lower and upper value of servo pulse time [ms]
+        freq        : Frequency of pca9685 cyclic in [Hz]
+        L298s       : List of channels that controls a L298 H-bridge
+                      [channel, EN1, EN2]
+        Dios        : List of channels that controls digital outputs
+        Inv         : List of channels that has to be inverted
+    Variables:
+        self.imp_tab = []  - 16 x 254 cells table, containing the 
+                             impulse parameter for each servo value of channel
+                             used by the PCA9685 device driver
+        self.FSave = [] -    Stores the fail-save servo value of each channel
+        self.ChTidef = [],[] - Stores the min and diff = max - min value 
+                              of pulses for each channel
+    Public methods: 
+        get_rtime(): Provides the realtime the controller was updated 
+        update(msg): Updates a channel with a new set value 
+        adjust_channel (min_val, max_val, ch): 
+                     Can be used to specify 
+                     lower and upper value of servo pulse time [ms] for a 
+                     special channel, like a pretrimming
+        set_fail_save_pos(chan, val):
+                     Overrides the predefined settings of 
+                     fail-save value for a special channel
+        fail_safe(): Sets all actuators to the fail-save position
+                      
     '''
     def __init__(self, i_min, i_max, freq, L298s = [], Dios=[], Inv = []):
         PCA9685.__init__(self)
         self.freq = freq
         self.set_pwm_freq(self.freq) 
-        self.imp_tab = []
-        self.invert_input = []
         self.i_min = i_min
         self.i_max = i_max
         self.L298Chs = L298s
         self.Dios = Dios
-        self.Inv = Inv
-        self.FSave = []
+        self.Inv = Inv       
+        self.FSave = []     
+        self.imp_tab = []
+        self.invert_input = []
+        self.ChTidef = [],[]       
+        # Fills the fail_safe position list with default values
         for i in range(16):
-            self.FSave.append(127) 
-        self.ChTidef = [],[]
-        self.servo_min =  int(round(((self.i_min * self.freq) / 1000) * 4095))
-        self.servo_max =  int(round(((self.i_max * self.freq) / 1000) * 4095))  
-        self.diff = self.servo_max - self.servo_min                 
-        (self.ix_min, self.ix_diff) = range(2)      
+            self.FSave.append(127)           
+        (self.ix_min, self.ix_diff) = range(2)        
+        # Fills the channel time behavior list with default values
         for i in range(16):
-            self.ChTidef[self.ix_min].append(self.servo_min)
-            self.ChTidef[self.ix_diff].append(self.diff)   
+            self.ChTidef[self.ix_min].append(self.imp_val(self.i_min))            
+            self.ChTidef[self.ix_diff].append(self.diff_val(self.i_min, self.i_max))   
         self.calc_puls_table()
         # update of pulstable for LM298 purposes
         i = 0
         for i in range(len(self.L298Chs)):
             if (i % 3 == 0):
-                self.calc_puls_table_L298(self.L298Chs[i])                   
- 
+                self.calc_puls_table_L298(self.L298Chs[i]) 
         self.create_invert_table()
         self.rtime = time.time()
         
@@ -96,7 +123,7 @@ class PWM_Controller(PCA9685):
     def diff_val (self, min_val, max_val):
         return self.imp_val(max_val) - self.imp_val(min_val)
     
-    def adjustCh (self, min_val, max_val, ch):
+    def adjust_channel (self, ch, min_val, max_val):
         self.ChTidef[self.ix_min][ch] = self.imp_val(min_val)       
         self.ChTidef[self.ix_diff][ch] = self.diff_val(min_val, max_val)
         for i in range(255):                 
@@ -142,6 +169,14 @@ class PWM_Controller(PCA9685):
                     self.update_L298(i, self.FSave[i])
             else: 
                 self.update_Servo(i, self.FSave[i])  
+                
+    def update_app (self, chan, remote_inp):
+        if ((not SIM) and (remote_inp == 0)):
+            self.fail_safe()
+            time.sleep(1)
+            print ("shutdown")
+            time.sleep(2)
+            os.system("sudo shutdown now")                                    
                                
     def update_L298(self, chan, remote_inp):
         self.set_pwm(chan, 0, self.imp_tab[chan][remote_inp])
@@ -165,7 +200,7 @@ class PWM_Controller(PCA9685):
     def update_ch(self, chan, remote_inp):
         inp = remote_inp    
         if (chan in self.Inv):
-            inp = self.invert_input[remote_inp]               
+            inp = self.invert_input[remote_inp]              
         if (chan in self.Dios): 
             self.update_Dio(chan, inp)
         elif (chan in self.L298Chs):    
@@ -174,8 +209,11 @@ class PWM_Controller(PCA9685):
             self.update_Servo(chan, inp)
             
     def update(self, msg):
-        ''' calling the board update function 
-            with extracted channel and set value
+        ''' Interface for the UDP-client 
+        
+        hdr = 100 : update_app 
+        hdr = 127 : trimming
+        hdr = 255 : servo values            
         '''
         self.rtime = time.time()
         i = 0 
@@ -183,13 +221,20 @@ class PWM_Controller(PCA9685):
             hdr = msg[i*3 + 0]      
             ch = msg[i*3 + 1]
             val = msg[i*3 + 2]
-            if (hdr == 127):
-                self.trimm_chan(ch, val)
-            else:
-                print (ch, val)   
+            if (hdr == 255):
                 self.update_ch(ch, val)
+            elif(hdr == 127):
+                self.trimm_chan(ch, val)
+            elif (hdr == 100):
+                self.update_app(ch, val)              
 
 class Observer(Thread):
+    ''' Timeout supervision of receiving telegrams.
+        
+    Depending on running in a real system or during testing on a PC 
+    different actions are possible to define. 
+    '''
+    
     def __init__(self, SC, tel_time_out, ID):
         Thread.__init__(self)
         self.SC = SC
@@ -197,22 +242,23 @@ class Observer(Thread):
         self.ID = ID
         self.start()
 
-    def run(self):
-        ''' checks whether a timeout without telegramm receiving 
-            happens, if so an system action can be places here  
-        '''
+    def run(self):       
         while True:
             if ((time.time() - self.SC.get_rtime()) > self.tout):
                 self.SC.fail_safe()
                 time.sleep(1)
-                print ('Beenden' + str(os.getpid()))
-                os.system("sudo kill " + str(os.getpid()))
-                # os.system("sudo shutdown ")
+                print ('exit' + str(os.getpid()))
+                if SIM:
+                    os.system("sudo kill " + str(os.getpid()))
+                else:
+                    os.system("sudo shutdown now")
             time.sleep(1)  
 
  
 class UDP_Client(Thread):
-    """  simple UDP receiver with telegramm decoding""" 
+    """  Simple UDP receiver with telegramm decoding
+    
+    """ 
     def __init__(self, controller, IP, port_tx, port_rx, tbroadcast, ID):
         Thread.__init__(self)
         self.controller = controller
@@ -248,7 +294,7 @@ class UDP_Client(Thread):
             if data:
                 try:
                     msg = self.decode_Tel(data) 
-                    self.update_Controller(msg)                  
+                    self.update_controller(msg)                  
                 except:
                     msg = [] 
                     
@@ -266,18 +312,22 @@ class UDP_Client(Thread):
             data.append(((ord(input[i+4]) & 0x0F) << 4) + (ord(input[i+5]) & 0x0F))       
         return data 
 
-    def update_Controller(self, msg):
+    def update_controller(self, msg):
         self.controller.update(msg)
         
 
 def main():
-    time.sleep(10) 
+    # Configuration model prototype 
+    # Channel 0,1,2: L298 H-Bridgey 0= EN, 1 = IN1 2 = IN2
+    # Channel 15: Servo 
+    # Channel 6: Status LED that is illuminated at live time
+    if not SIM:
+        time.sleep(10)  
     L298Channels = [0, 1, 2]
-    DIOs = [3]
-    Inverted = []  
+    DIOs = [6]
+    Inverted = [6]  
     SC = PWM_Controller(1.0, 2.0, 50, L298Channels, DIOs, Inverted)
-    #SC.adjustCh(0.95, 1.75, 4) 
-    #SC.set_fail_save_pos(0, 0)
+    SC.set_fail_save_pos(0, 0)
     SC.fail_safe()
     SC.update_ch(6, 254) # live indication after start up (LED)
     S = UDP_Client(SC,'', 6000, 6100, 10, "RC#001")

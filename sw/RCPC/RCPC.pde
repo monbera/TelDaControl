@@ -4,7 +4,7 @@ Purpose:     Easy checking of methods on a PC without multitouch
              Using as the baseline for a Android App   
 Author:      Bernd Hinze
 
-Created:     28.01.2019
+Created:     29.04.2019
 Copyright:   (c) Bernd Hinze 2019
 Licence:     MIT see https://opensource.org/licenses/MIT
  ------------------------------------------------------------------------------
@@ -13,11 +13,11 @@ import hypermedia.net.*;
 UDP udp;
 boolean SIM = false;
 // Start adaptation required
-Lever  L1; 
+Lever L1; 
 LeverT L2;
 Trim T1;
 Trim T2;
-Switch S1;
+SwitchApp S1;
 Switch S2;
 Indicator ICom;
 // End adaptation 
@@ -43,12 +43,12 @@ void setup()
     ip  = "192.168.1.2";  // the remote IP address
     ip_received = true; 
   }
-  L1 = new Lever (int(width*0.25), int(height*0.15), int(height*0.85), 0);
-  L2 = new LeverT (int(height*0.5), int(width*0.5), int(width*0.9), 4);
+  L1 = new Lever (int(width*0.25), int(height*0.15),  int(height*0.85), int(100), 0);
+  L2 = new LeverT (int(height*0.5), int(width*0.5), int(width*0.9), int (50),  4);
   T1 = new Trim(int(width * 0.09), int(height * 0.5), "P", 0);
   T2 = new Trim(int(width * 0.7), int(height * 0.8), "L", 4);
-  S1 = new Switch(int(height * 0.04), int(width * 0.5), int(height * 0.15), 5);
-  S2 = new Switch(int(height * 0.04), int(width * 0.6), int(height * 0.15), 6);
+  S1 = new SwitchApp(int(height * 0.04), int(width * 0.5), int(height * 0.15), 5, 100); 
+  S2 = new Switch(int(height * 0.04), int(width * 0.6), int(height * 0.15), 6, 255);
   ICom = new Indicator();
   // End adaptation 
   udp = new UDP (this, 6000);
@@ -120,8 +120,8 @@ void mousePressed()
 }
 
 /* -------------------------------------------------------------------------
-   The function draws the current state of the connction and The receiver ID 
-   into the receiver in the right corner.
+   The function draws the current state of the connction and the receiver ID 
+   on the right corner of the screen.
 ----------------------------------------------------------------------------   
 */
 class Indicator {
@@ -205,7 +205,7 @@ String int2str(int inp)
 
 
 /* ---------------------------------------------------------------------
-   This class implements the vertical control leber. 
+   This class implements the vertical control lever. 
    Parameter:
      cx: distance to the left screen border
      clim_pos_low: distance of the top guideway end to the top border
@@ -215,22 +215,22 @@ String int2str(int inp)
 */
 class Lever 
 {
- int tx, ty, lim_pos_low, lim_pos_high, center_pos; 
+ int tx, ty, lim_pos_low, lim_pos_high, center_pos, cdefault_Pos; 
  int d, rgrid, px, py, dx, backlim_high, backlim_low;
  int valIdx = 0, ch, dist;
  String StrCh = "";
  int [] ValMap;
-
- Lever(int cx, int clim_pos_low, int clim_pos_high, int channel){  
+ // default_Pos 0..100
+ Lever(int cx, int clim_pos_low, int clim_pos_high, int cdefault_Pos, int channel){  
    ch = channel;
    lim_pos_low = clim_pos_low;
    lim_pos_high = clim_pos_high;
-   center_pos = (lim_pos_high + lim_pos_low)/2;
+   center_pos = ((lim_pos_high - lim_pos_low) * cdefault_Pos/100) + lim_pos_low;
    backlim_high =  center_pos + (lim_pos_high - lim_pos_low)/3;
    backlim_low =   center_pos - (lim_pos_high - lim_pos_low)/3;
    d = int(height * 0.2);
    rgrid = int(d* 0.75);
-   py = (center_pos);  // var for current lever position 
+   py = center_pos;  // var for start up lever position 
    px = cx;
    StrCh = "C"+ str(ch);
    tx = int(cx * 0.65);
@@ -262,7 +262,6 @@ class Lever
         } else {          
           py += 1;}       
       }  
-     //LeverHandle(px, py); 
     } 
     LeverHandle(px, py); 
   }
@@ -298,7 +297,7 @@ class Lever
 
 /* -------------------------------------------------------------------------
    This class is an extention of the 'Lever' class and overwrites 
-   the constructor and the    draw method to rotate the coordinates:
+   the constructor and the  display method to rotate the coordinates:
      cx: distance to the left screen border
      clim_pos_low: distance of the left guideway end to the top border
      clim_pos_high: distance of the right guideway end to the top border
@@ -307,8 +306,8 @@ class Lever
 */
 class LeverT extends Lever{
   
-  public LeverT(int ct, int clim_pos_low, int clim_pos_high, int channel){
-    super (ct, clim_pos_low, clim_pos_high, channel);
+  public LeverT(int ct, int clim_pos_low, int clim_pos_high, int cdefault_Pos, int channel){
+    super (ct, clim_pos_low, clim_pos_high, cdefault_Pos, channel);
    py = ct;
    px = center_pos;
    ty = int(py * 1.45);
@@ -328,7 +327,6 @@ class LeverT extends Lever{
    dist = abs(center_pos - px);
    if (overCircle(px, py, rgrid)){
      px = constrain((mouseX), lim_pos_low, lim_pos_high); 
-     LeverHandle(px, py); 
      }
    else {
       if ((px > int(center_pos)) && (px < backlim_high)){
@@ -345,13 +343,13 @@ class LeverT extends Lever{
           px += 1;
         }
       }
-      LeverHandle(px, py); 
-      }  
-    }
+    }  
+     LeverHandle(px, py); 
+   }
  }
 
 /*-------------------------------------------------------------------------
-   This sclass draws the trim buttons an an indication 
+   This sclass draws the trim buttons and an indication 
    area to depict the current trim value. 
 ----------------------------------------------------------------------------
 */
@@ -434,34 +432,34 @@ class Trim {
 ----------------------------------------------------------------------------
 */
 class Switch {
-  int SWh, SWr, SWx, SWy, SWOff, SWOn, SWd, pSWPos, SWyt, SWgrid;
+  int SWh, SWr, SWx, SWy, SWOff, SWOn, SWd, pSWPos, SWytOn, SWytOff, SWgrid, SWhdr;
   int valIdx = 0, SWCh;
   String StrCh = "";
   
-  Switch ( int r, int cx, int cy, int channel)
+  Switch ( int r, int cx, int cy, int channel, int hdr)
   {
     SWr = r; 
     SWd = 2 * r;
     SWh = 4 * SWr; 
-    SWyt = SWy + int(7.2 * SWr); 
     SWx = cx;
     SWy = cy;
+    SWytOn = SWy + int(3.5 * SWr); 
+    SWytOff = SWy - int(2.5 * SWr);
     SWOff = SWy - SWr; 
     SWOn = SWy + SWr; 
     SWgrid = int(1.5 * SWr);
     pSWPos = SWOff;
     SWCh = channel;
-    StrCh = "C"+ str(SWCh);    
+    SWhdr = hdr;
+    StrCh = "C"+ str(SWCh);     
   }
-  
+
   void display(){
     rectMode(CENTER);
     stroke(75);
     fill(110); 
     rect(SWx, SWy, SWr, SWh, 1.5*SWr);  // base plate 
-    fill(80); 
-    textAlign(CENTER);
-    text(StrCh, SWx, SWyt);  
+    drawLabel();
     if (pSWPos == SWOff)
     {
       fill(160);
@@ -473,14 +471,21 @@ class Switch {
     rectMode(CORNER);
   }
   
+  void drawLabel() {
+    fill(80); 
+    textAlign(CENTER);
+    text(StrCh, SWx, SWytOn); 
+    text("u", SWx, SWytOff); 
+  }
+    
   String getSval()
   {
     if (pSWPos == SWOff)
     {  
-      return (int2str(255) + int2str(SWCh) + int2str(0));
+      return (int2str(SWhdr) + int2str(SWCh) + int2str(0));
     }else
     {
-      return (int2str(255) + int2str(SWCh) + int2str(254));
+      return (int2str(SWhdr) + int2str(SWCh) + int2str(254));
     }
   }
   
@@ -499,6 +504,28 @@ class Switch {
     return result;
   }
  }  
+
+/* --------------------------------------------------------------------------
+   This class is an extention of the 'Switch' class and overwrites 
+   the default position and the knob labels
+   With the header configuration of hdr = 100 it can power down
+   the receiver.
+----------------------------------------------------------------------------
+*/ 
+class SwitchApp extends Switch {
+  public SwitchApp ( int r, int cx, int cy, int channel, int hdr){
+    super (r, cx, cy, channel, hdr); 
+    pSWPos = SWOn;
+  }
+  
+  void drawLabel(){
+    fill(80); 
+    textAlign(CENTER);
+    text("ON", SWx, SWytOn); 
+    text("OFF", SWx, SWytOff);    
+  }  
+}
+
 /* ----------------------------------------------------------------------------
   This class draws two buttons that act as seperate switches on one channel of
   PWM. This is required for simple play models without servo for steering.
