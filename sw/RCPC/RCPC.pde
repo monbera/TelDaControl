@@ -24,6 +24,7 @@ Indicator ICom;
 
 String ip       = "";  // the remote IP address
 int port        = 6100;    // the destination port
+int defaultPosL1 = 50;
 int tms_received = millis();
 int tms_received_tout = 5 * 1000; // 20s
 boolean ip_received = false; 
@@ -33,6 +34,7 @@ String [] CodeTable  =  {"0","1","2", "3", "4", "5", "6","7", "8", "9", ":", ";"
 
 void setup()
 {
+  defaultPosL1 = 50;
   size(800,400);
   orientation(LANDSCAPE); 
   //fullScreen();
@@ -43,13 +45,13 @@ void setup()
     ip  = "192.168.1.2";  // the remote IP address
     ip_received = true; 
   }
-  L1 = new Lever (int(width*0.25), int(height*0.15),  int(height*0.85), int(100), 0);
+  L1 = new Lever (int(width*0.25), int(height*0.15),  int(height*0.85), defaultPosL1, 0);
   L2 = new LeverT (int(height*0.5), int(width*0.5), int(width*0.9), int (50),  4);
   T1 = new Trim(int(width * 0.09), int(height * 0.5), "P", 0);
   T2 = new Trim(int(width * 0.7), int(height * 0.8), "L", 4);
-  S1 = new SwitchApp(int(height * 0.04), int(width * 0.5), int(height * 0.15), 5, 100); 
-  S2 = new Switch(int(height * 0.04), int(width * 0.6), int(height * 0.15), 6, 255);
-  ICom = new Indicator();
+  S1 = new SwitchApp(int(height * 0.04), int(width * 0.5), int(height * 0.15), 15, 100); 
+  S2 = new Switch(int(height * 0.04), int(width * 0.6), int(height * 0.15), 3, 255);
+  ICom = new Indicator(ID, "No Device" , 0.95, 0.10);
   // End adaptation 
   udp = new UDP (this, 6000);
   udp.listen( true );
@@ -124,15 +126,19 @@ void mousePressed()
    on the right corner of the screen.
 ----------------------------------------------------------------------------   
 */
-class Indicator {
+class Indicator 
+{
   int tx, ty, ex, ey, ed;
-  Indicator()
+  String gr, rd;
+  Indicator(String green, String red , float x , float y)
   {
-    ex = int(width * 0.95);
-    ey = int(height * 0.10);
+    ex = int(width * x);
+    ey = int(height * y);
     ed = int(height * 0.05);
-    tx = int(width * 0.92);
-    ty = int(height * 0.115);  
+    tx = int(width * (x - 0.03));
+    ty = int(height * (y + 0.015)); 
+    gr = green;
+    rd = red;
   }
 
   void display(boolean state)
@@ -142,12 +148,12 @@ class Indicator {
         fill(#04C602);
         ellipse(ex, ey, ed, ed);  
         fill(80);
-        text(ID, tx, ty);
+        text(gr, tx, ty);
     } else {
         fill(#FF0000);
         ellipse(ex, ey, ed, ed);
         fill(80);
-        text("No Device", tx, ty);
+        text(rd, tx, ty);
     }
   }
 }
@@ -234,7 +240,7 @@ class Lever
    px = cx;
    StrCh = "C"+ str(ch);
    tx = int(cx * 0.65);
-   ty = int(center_pos * 1.03);
+   ty = int(((lim_pos_high - lim_pos_low)/2  + lim_pos_low) * 1.03);
    ValMap = new int [int(lim_pos_high)+1];
    createValMap(int(lim_pos_low), int(lim_pos_high));
  }
@@ -475,7 +481,7 @@ class Switch {
     fill(80); 
     textAlign(CENTER);
     text(StrCh, SWx, SWytOn); 
-    text("u", SWx, SWytOff); 
+    text("", SWx, SWytOff); 
   }
     
   String getSval()

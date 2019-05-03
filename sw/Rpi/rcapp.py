@@ -317,21 +317,8 @@ class UDP_Client(Thread):
         
 
 def main():
-    # Configuration model prototype 
-    # Channel 0,1,2: L298 H-Bridgey 0= EN, 1 = IN1 2 = IN2
-    # Channel 15: Servo 
-    # Channel 6: Status LED that is illuminated at live time
-    if not SIM:
-        time.sleep(10)  
-    L298Channels = [0, 1, 2]
-    DIOs = [6]
-    Inverted = [6]  
-    SC = PWM_Controller(1.0, 2.0, 50, L298Channels, DIOs, Inverted)
-    SC.set_fail_save_pos(0, 0)
-    SC.fail_safe()
-    SC.update_ch(6, 254) # live indication after start up (LED)
-    S = UDP_Client(SC,'', 6000, 6100, 10, "RC#001")
-    O = Observer(SC, 30.0, "RC#001")
+    # Configuration of the model is made in rcmain 
+    pass        
 
 if __name__ == '__main__':
     main()
