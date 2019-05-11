@@ -4,7 +4,7 @@ Purpose:     RC transmitter with multitouch
              Required a raspberry pi with PCA9685 board as a receiver    
 Author:      Bernd Hinze
 
-Created:     29.04.2019
+Created:     11.05.2019
 Copyright:   (c) Bernd Hinze 2019
 Licence:     MIT see https://opensource.org/licenses/MIT
  ------------------------------------------------------------------------------
@@ -24,7 +24,6 @@ Indicator ICom;
 
 String ip       = "";  // the remote IP address
 int port        = 6100;    // the destination port
-int defaultPosL1 = 50;
 int tms_received = millis();
 int tms_received_tout = 5 * 1000; // 20s
 boolean ip_received = false; 
@@ -44,7 +43,7 @@ void setup()
     ip  = "192.168.1.2";  // the remote IP address
     ip_received = true; 
   }
-  L1 = new Lever (int(width*0.25), int(height*0.15),  int(height*0.85), defaultPosL1, 0);
+  L1 = new Lever (int(width*0.25), int(height*0.15),  int(height*0.85), int (50), 0);
   L2 = new LeverT (int(height*0.5), int(width*0.5), int(width*0.9), int (50),  4);
   T1 = new Trim(int(width * 0.09), int(height * 0.5), "P", 0);
   T2 = new Trim(int(width * 0.7), int(height * 0.8), "L", 4);
@@ -125,7 +124,8 @@ void touchStarted()
    on the right corner of the screen.
 ----------------------------------------------------------------------------   
 */
-class Indicator {
+class Indicator 
+{
   int tx, ty, ex, ey, ed;
   String gr, rd;
   Indicator(String green, String red , float x , float y)
@@ -284,7 +284,7 @@ class Lever
    PWM device driver interface 0..254 (miniSSC protocol)
 */
  void createValMap(int min, int max){
-    for (int i = min; i < max; i++) { 
+    for (int i = min; i <= max; i++) { 
       ValMap [i] = round(map(i, max, min, 0, 254));
     }
   }

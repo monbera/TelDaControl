@@ -1,0 +1,6 @@
+*.PDF       diff=astextplain
+*.pdf       diff=astextplain
+*.md        text
+*.png       binary
+
+
