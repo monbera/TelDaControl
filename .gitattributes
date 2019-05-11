@@ -2,5 +2,6 @@
 *.pdf       diff=astextplain
 *.md        text
 *.png       binary
+*.pde       linguist-vendored
 
 
