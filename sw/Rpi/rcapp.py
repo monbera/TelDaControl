@@ -251,7 +251,8 @@ class Observer(Thread):
                 if SIM:
                     os.system("sudo kill " + str(os.getpid()))
                 else:
-                    os.system("sudo shutdown now")
+                    # better rebooting
+                    os.system("sudo reboot")
             time.sleep(1)  
 
  
@@ -293,8 +294,10 @@ class UDP_Client(Thread):
             print (data)
             if data:
                 try:
+                    #print ('adresse Sender :' , address[0], self.port_tx)
+                    self.bc_address = (address[0], self.port_tx)
                     msg = self.decode_Tel(data) 
-                    self.update_controller(msg)                  
+                    self.update_controller(msg)                
                 except:
                     msg = [] 
                     
