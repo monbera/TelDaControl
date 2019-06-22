@@ -81,7 +81,7 @@ class PWM_Controller(PCA9685):
         self.FSave = []     
         self.imp_tab = []
         self.invert_input = []
-        self.ChTidef = [],[]       
+        self.ChTidef = [],[]  
         # Fills the fail_safe position list with default values
         for i in range(16):
             self.FSave.append(127)           
@@ -89,7 +89,7 @@ class PWM_Controller(PCA9685):
         # Fills the channel time behavior list with default values
         for i in range(16):
             self.ChTidef[self.ix_min].append(self.imp_val(self.i_min))            
-            self.ChTidef[self.ix_diff].append(self.diff_val(self.i_min, self.i_max))   
+            self.ChTidef[self.ix_diff].append(self.diff_val(self.i_min, self.i_max))           
         self.calc_puls_table()
         # update of pulstable for LM298 purposes
         i = 0
@@ -128,7 +128,15 @@ class PWM_Controller(PCA9685):
         self.ChTidef[self.ix_diff][ch] = self.diff_val(min_val, max_val)
         for i in range(255):                 
                 self.imp_tab[ch][i]=(int((self.ChTidef[self.ix_diff][ch] * i/254) \
-                        + self.ChTidef[self.ix_min][ch])) 
+                        + self.ChTidef[self.ix_min][ch]))
+                
+    # ch: channel, fval = Thresshold 0..100 not used
+    def adjust_threshold (self, ch, fval):
+        ndiff =(self.ChTidef[self.ix_diff][ch] * fval/100.0)
+        nmin = ((self.ChTidef[self.ix_min][ch]  \
+                 + (self.ChTidef[self.ix_diff][ch]/2)) - ndiff/2)
+        for i in range(255):                 
+                self.imp_tab[ch][i]=int((ndiff * i/254) + nmin) 
 
     def calc_puls_table_L298 (self, chan):
         """ call after 'calc_puls_table'
@@ -173,9 +181,8 @@ class PWM_Controller(PCA9685):
     def update_app (self, chan, remote_inp):
         if ((not SIM) and (remote_inp == 0)):
             self.fail_safe()
-            time.sleep(1)
             print ("shutdown")
-            time.sleep(2)
+            time.sleep(1)
             os.system("sudo shutdown now")                                    
                                
     def update_L298(self, chan, remote_inp):
@@ -226,7 +233,7 @@ class PWM_Controller(PCA9685):
             elif(hdr == 127):
                 self.trimm_chan(ch, val)
             elif (hdr == 100):
-                self.update_app(ch, val)              
+                self.update_app(ch, val)  
 
 class Observer(Thread):
     ''' Timeout supervision of receiving telegrams.
@@ -239,6 +246,7 @@ class Observer(Thread):
         Thread.__init__(self)
         self.SC = SC
         self.tout = tel_time_out
+        self.tshutdn = tel_time_out * 10.0
         self.ID = ID
         self.start()
 
@@ -246,13 +254,13 @@ class Observer(Thread):
         while True:
             if ((time.time() - self.SC.get_rtime()) > self.tout):
                 self.SC.fail_safe()
-                time.sleep(1)
-                print ('exit' + str(os.getpid()))
-                if SIM:
-                    os.system("sudo kill " + str(os.getpid()))
-                else:
-                    # better rebooting
-                    os.system("sudo reboot")
+                if ((time.time() - self.SC.get_rtime()) > self.tshutdn):
+                    #print ('exit' + str(os.getpid()))
+                    if SIM:
+                        os.system("sudo kill " + str(os.getpid()))
+                    else:
+                        # better rebooting
+                        os.system("sudo reboot")
             time.sleep(1)  
 
  
