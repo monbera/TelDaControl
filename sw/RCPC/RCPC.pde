@@ -18,6 +18,7 @@ LeverT L2;
 Trim T1;
 Trim T2;
 SwitchApp SApp;
+Switch SLight;
 SwitchTh STh;
 SwitchDp SDp;
 Indicator ICom;
@@ -37,11 +38,12 @@ void setup()
   F = createFont("Arial", 16, true); 
   textFont(F, int(height * 0.04));
   // Start adaptation required
-  L1 = new Lever (int(width*0.25), int(height*0.15), int(height*0.85), int (50), 0);
-  L2 = new LeverT (int(height*0.5), int(width*0.5), int(width*0.9), int (50), 4);
+  L1 = new Lever (int(width*0.25), int(height*0.2), int(height*0.8), int (50), 0);
+  L2 = new LeverT (int(height*0.5), int(width*0.55), int(width*0.9), int (50), 4);
   T1 = new Trim(int(width * 0.09), int(height * 0.5), "P", 0);
-  T2 = new Trim(int(width * 0.7), int(height * 0.8), "L", 4);
+  T2 = new Trim(int(width * 0.72), int(height * 0.8), "L", 4);
   SApp = new SwitchApp(int(height * 0.04), int(width * 0.7), int(height * 0.15), 15, 100, 0, 254); 
+  SLight = new Switch(int(height * 0.04), int(width * 0.6), int(height * 0.15), 5, 255, 0, 254); 
   STh = new SwitchTh(int(height * 0.04), int(width * 0.5), int(height * 0.15), 0, 105, 50, 100);
   SDp = new SwitchDp(int(height * 0.04), int(width * 0.4), int(height * 0.15), 0, 105, 50, 100);
   // End adaptation 
@@ -198,7 +200,7 @@ class Indicator
       break;
     }
   }
-  
+
   boolean overI()
   {
     boolean result = false;
@@ -207,7 +209,7 @@ class Indicator
       result = true;
     }
     return result;
-  } 
+  }
 }
 
 
@@ -258,7 +260,7 @@ class Lever
 {
   int tx, ty, lim_pos_low, lim_pos_high, center_pos, cdefault_Pos; 
   int d, rgrid, px, py, dx;
-  int valIdx = 0, ch, dist, backspeed, dist_ch_sp;
+  int valIdx = 0, ch, dist, backspeed, dist_ch_sp, t_touched;
   String StrCh = "";
   int [] ValMap;
 
@@ -268,7 +270,7 @@ class Lever
     ch = channel;
     lim_pos_low = clim_pos_low;
     lim_pos_high = clim_pos_high;
-    backspeed = int(height * 0.04);       
+    backspeed = int(height * 0.02);       
     dist_ch_sp = int (backspeed * 1.1);
     center_pos = ((lim_pos_high - lim_pos_low) * cdefault_Pos/100) + lim_pos_low;
     d = int(height * 0.2);
@@ -285,34 +287,38 @@ class Lever
   void display()
   { 
     stroke(90);
-    strokeWeight(8);
+    strokeWeight(12);
     line (px, lim_pos_low, px, lim_pos_high); 
     fill(80); 
     text(StrCh, tx, ty);  
-    valIdx = overCircle(px, py, rgrid);
+    valIdx = overArea(px, py, rgrid, "P");
     if (valIdx != 0) {
       py = constrain((mouseY), lim_pos_low, lim_pos_high);
+      t_touched = millis();
     } else {
       dist = abs(center_pos - py);
-      if (py > int(center_pos)) {
-        if (dist > dist_ch_sp) {
-          py -= backspeed;
-        } else {  
-          py -= 1;
+      if ((millis() - t_touched) > 1000) {
+        if (py > int(center_pos)) {
+          if (dist > dist_ch_sp) {
+
+            py -= backspeed;
+          } else {  
+            py = center_pos;
+          }
         }
-      }
-      if (py < int(center_pos)){
-        if (dist > dist_ch_sp) {
-          py += backspeed;
-        } else {          
-          py += 1;
+        if (py < int(center_pos)) {
+          if (dist > dist_ch_sp) {
+            py += backspeed;
+          } else {
+            py = center_pos;
+          }
         }
       }
     } 
     LeverHandle(px, py);
   }
-  
-  void DefaultPos (int pos){
+
+  void DefaultPos (int pos) {
     center_pos = ((lim_pos_high - lim_pos_low) * pos/100) + lim_pos_low;
     py = center_pos;
   }
@@ -369,28 +375,31 @@ class LeverT extends Lever
 
   void display() { 
     stroke(90);
-    strokeWeight(8);
+    strokeWeight(12);
     line (lim_pos_low, py, lim_pos_high, py ); 
     fill(80); 
     textAlign(CENTER);
     text(StrCh, tx, ty);
-    valIdx = overCircle(px, py, rgrid);
+    valIdx = overArea(px, py, rgrid, "L");
     if (valIdx != 0) {
       px = constrain((mouseX), lim_pos_low, lim_pos_high);
+      t_touched = millis();
     } else {
       dist = abs(center_pos - px);
-      if (px > int(center_pos)) {
-        if (dist > dist_ch_sp) {
-          px -= backspeed;
-        } else { 
-          px -= 1;
+      if ((millis() - t_touched) > 1000) {
+        if (px > int(center_pos)) {
+          if (dist > dist_ch_sp) {
+            px -= backspeed;
+          } else { 
+            px = center_pos;
+          }
         }
-      }
-      if (px < int(center_pos)) {
-        if (dist > dist_ch_sp) {
-          px += backspeed;
-        } else { 
-          px += 1;
+        if (px < int(center_pos)) {
+          if (dist > dist_ch_sp) {
+            px += backspeed;
+          } else { 
+            px = center_pos;
+          }
         }
       }
     }  
@@ -531,7 +540,7 @@ class Switch
     textAlign(CENTER);
     text("ON", SWx, SWytOn); 
     text("OFF", SWx, SWytOff);
-    text("C" + StrCh, SWxc, SWyc);  
+    text("C" + StrCh, SWxc, SWyc);
   }
 
   String getSval()
@@ -544,7 +553,7 @@ class Switch
       return (int2str(SWhdr) + int2str(SWCh) + int2str(SWvON));
     }
   }
-  
+
   int getIval()
   {
     if (pSWPos == SWOff)

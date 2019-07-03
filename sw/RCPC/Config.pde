@@ -34,6 +34,28 @@ int overCircle(int x, int y, int radius) {
   return result;
 }
 
+int overArea(int x, int y, int grid, String ori) {
+  int result = 0; // means false 
+  int gridline = grid * 2;
+  int disX = abs(x - mouseX);
+  int disY = abs(y - mouseY);
+
+  if (ori == "P") {
+    if ((disX < grid ) && (disY < gridline)) {
+      result = 1;
+    } else {
+      result = 0;
+    }
+  } else {
+    if ((disX < gridline ) && (disY < grid)) {
+      result = 1;
+    } else {
+      result = 0;
+    }
+  }
+  return result;
+}
+
 
 /* -----------------------------------------------------------------------------
  Dertermines if a finger or the mouse is touching the scree and change the state of 
@@ -81,13 +103,13 @@ void mousePressed()
       if (SDp.getIval() == 50) {
         L1.adjustValMap(190, 64);
       } else {
-        L1.adjustValMap(127, 0); 
+        L1.adjustValMap(127, 0);
       }
     } else {
       L1.adjustValMap(254, 0);
     }
   }
-  
+
   if (SDp.overS())
   {
     if (STh.getIval() == 100)
@@ -105,9 +127,8 @@ void mousePressed()
       } else {
         L1.adjustValMap(127, 0); 
         L1.DefaultPos (100);
-      }   
+      }
     }
-  }  
+  }
 } 
- // End adaptation
- 
+// End adaptation

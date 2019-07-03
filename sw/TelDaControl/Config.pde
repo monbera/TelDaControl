@@ -9,45 +9,59 @@
  Licence:     MIT see https://opensource.org/licenses/MIT
  ------------------------------------------------------------------------------
  */
- 
-import android.content.Context;
-import android.app.Notification;
-import android.app.NotificationManager;
-NotificationManager gNotificationManager;
-Notification gNotification;
-long[] gVibrate = {0,100}; 
 
 boolean SIM = false; 
 
-void settings(){
+void settings() {
   fullScreen();
 }
 
 /* -----------------------------------------------------------------------------
-   Dertermines if a finger is over the area given by the 
-   coordinates and the radius - Android version
----------------------------------------------------------------------------------
-*/
-  int overCircle(int x, int y, int radius) 
-  {
-   int valIdx = 0; 
-   for (int i = 0;  i < touches.length; i++){
+ Dertermines if a finger is over the area given by the 
+ coordinates and the radius - Android version
+ ---------------------------------------------------------------------------------
+ */
+int overCircle(int x, int y, int grid) 
+{
+  int valIdx = 0; 
+  for (int i = 0; i < touches.length; i++) {
     int disX = x - int(touches[i].x);
     int disY = y - int(touches[i].y);
-    if ((sqrt(sq(disX) + sq(disY)) < radius ) 
-       && (valIdx == 0)){
-        valIdx = i + 1 ;  // caused 0 is not valid, shifting
-       }
-   }
-   return valIdx;
+    if ((sqrt(sq(disX) + sq(disY)) < grid ) 
+      && (valIdx == 0)) {
+      valIdx = i + 1 ;  // caused 0 is not valid, shifting
+    }
   }
+  return valIdx;
+}
 
-
+int overArea(int x, int y, int grid, String ori) 
+{ 
+  int gridline = int(grid * 2.0);
+  int valIdx = 0; 
+  for (int i = 0; i < touches.length; i++) {
+    int disX = abs(x - int(touches[i].x));
+    int disY = abs(y - int(touches[i].y));
+    //if ((sqrt(sq(disX) + sq(disY)) < grid ) 
+    if (ori == "P") {
+      if (((disX < grid ) && (disY < gridline))  
+        && (valIdx == 0)) {
+        valIdx = i + 1 ;  // caused 0 is not valid, shifting
+      }
+    } else {
+      if (((disX < gridline ) && (disY < grid))  
+        && (valIdx == 0)) {
+        valIdx = i + 1 ;  // caused 0 is not valid, shifting
+      }
+    }
+  }
+  return valIdx;
+}
 /* -----------------------------------------------------------------------------
  Dertermines if a finger or the mouse is touching the scree and change the state of 
  switches 
  ---------------------------------------------------------------------------------
-*/
+ */
 
 void touchStarted()
 { 
@@ -89,13 +103,13 @@ void touchStarted()
       if (SDp.getIval() == 50) {
         L1.adjustValMap(190, 64);
       } else {
-        L1.adjustValMap(127, 0); 
+        L1.adjustValMap(127, 0);
       }
     } else {
       L1.adjustValMap(254, 0);
     }
   }
-  
+
   if (SDp.overS())
   {
     if (STh.getIval() == 100)
@@ -113,9 +127,8 @@ void touchStarted()
       } else {
         L1.adjustValMap(127, 0); 
         L1.DefaultPos (100);
-      }   
+      }
     }
-  }  
+  }
 } 
- // End adaptation
- 
+// End adaptation
