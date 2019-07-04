@@ -68,6 +68,7 @@ void draw()
   T1.display();
   T2.display();
   SApp.display();
+  SLight.display();
   STh.display();
   SDp.display();
   // End Adaptation
@@ -168,10 +169,10 @@ class Indicator
       fill(#04C602);
       ellipse(ex, ey, ed, ed);
       fill(80);
-      if (overI()){
+      if (overI()) {
         text(ip, tx, ty);
       } else {
-        text(tID, tx, ty);  
+        text(tID, tx, ty);
       }     
       break; 
     case 2: 
@@ -270,7 +271,7 @@ class Lever
     ch = channel;
     lim_pos_low = clim_pos_low;
     lim_pos_high = clim_pos_high;
-    backspeed = int(height * 0.02);       
+    backspeed = int(height * 0.04);       
     dist_ch_sp = int (backspeed * 1.1);
     center_pos = ((lim_pos_high - lim_pos_low) * cdefault_Pos/100) + lim_pos_low;
     d = int(height * 0.2);
