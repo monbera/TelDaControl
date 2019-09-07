@@ -1,3 +1,5 @@
+#! /usr/bin/env python3
+# -*- coding: utf-8 -*-
 # Copyright (c) 2016 Adafruit Industries
 # Author: Tony DiCola
 # Original source has been revised for own purposes
@@ -9,14 +11,14 @@
 # Author:      Bernd Hinze
 #
 # Created:     08.01.2019
-# Copyright:   (c) Bernd Hinze 2019
+# Copyright:   (c) Bernd Hinze 2019  
 # Link:        https://github.com/monbera/TeleControl.git 
 # Licence:     MIT see https://opensource.org/licenses/MIT
 # ----------------------------------------------------------------------------
 from __future__ import division
 import time
 
-SIM = False
+SIM = False  # 'True' for running on a PC with LINUX OS
  
 if SIM:
     class Sbus():

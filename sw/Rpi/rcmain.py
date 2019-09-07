@@ -1,4 +1,5 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
+# -*- coding: utf-8 -*-
 #-------------------------------------------------------------------------------
 # Name:        Remote Control Receiver 
 # Purpose:     Receiving remote control commands, controlling 
@@ -29,8 +30,10 @@ def main():
     SC.set_fail_save_pos(0, 0)
     SC.fail_safe()
     SC.update_ch(6, 254) # live indication after start up (LED)
-    S = UDP_Client(SC,'', 6000, 6100, 10, rcname)
-    O = Observer(SC, 30.0, rcname)
+    U = UDP_Client(SC,'', 6000, 6100, 10, rcname)
+    O = Observer(SC, 2.0, rcname)
+    O.start()
+    U.run()
 
 
 if __name__ == '__main__':

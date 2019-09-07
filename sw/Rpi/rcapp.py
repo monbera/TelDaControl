@@ -1,4 +1,5 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
+# -*- coding: utf-8 -*-
 #-------------------------------------------------------------------------------
 # Name:        Remote Control Receiver 
 # Purpose:     Receiving remote control commands, controlling 
@@ -10,23 +11,22 @@
 # Licence:     MIT see https://opensource.org/licenses/MIT
 # -------------------------------------------------------------------------------
 from __future__ import division, print_function
+import netifaces as ni
 import socket
 import time
 import os
-import fcntl
-import struct
+import queue
 from threading import Thread
 from pca9685 import PCA9685, SIM   # PWM Board Package
 
+q = queue.LifoQueue(100)
 
 class Utility(): 
     ''' Static methods to get IP-adresses
     '''
     def get_ip_address(ifname):
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
         try:
-            return socket.inet_ntoa(fcntl.ioctl(s.fileno(), 0x8915,
-                struct.pack('256s', ifname[:15]))[20:24])
+            return ni.ifaddresses(ifname)[ni.AF_INET][0]['addr']
         except:
             return "127.0.0.0"
              
@@ -63,6 +63,9 @@ class PWM_Controller(PCA9685):
                      Can be used to specify 
                      lower and upper value of servo pulse time [ms] for a 
                      special channel, like a pretrimming
+        adjust_dual_rate (self, ch, fval):
+                     The value 'fval' (0..100) sets the impulsrates new in the 
+                     self.imp_tab for the channel 'ch'
         set_fail_save_pos(chan, val):
                      Overrides the predefined settings of 
                      fail-save value for a special channel
@@ -89,7 +92,7 @@ class PWM_Controller(PCA9685):
         # Fills the channel time behavior list with default values
         for i in range(16):
             self.ChTidef[self.ix_min].append(self.imp_val(self.i_min))            
-            self.ChTidef[self.ix_diff].append(self.diff_val(self.i_min, self.i_max))           
+            self.ChTidef[self.ix_diff].append(self.diff_val(self.i_min, self.i_max))         
         self.calc_puls_table()
         # update of pulstable for LM298 purposes
         i = 0
@@ -97,7 +100,6 @@ class PWM_Controller(PCA9685):
             if (i % 3 == 0):
                 self.calc_puls_table_L298(self.L298Chs[i]) 
         self.create_invert_table()
-        self.rtime = time.time()
         
     def get_rtime(self):
         return self.rtime
@@ -129,7 +131,7 @@ class PWM_Controller(PCA9685):
         for i in range(255):                 
                 self.imp_tab[ch][i]=(int((self.ChTidef[self.ix_diff][ch] * i/254) \
                         + self.ChTidef[self.ix_min][ch]))
-                
+
     # ch: channel, fval = Thresshold 0..100 not used
     def adjust_threshold (self, ch, fval):
         ndiff =(self.ChTidef[self.ix_diff][ch] * fval/100.0)
@@ -179,11 +181,12 @@ class PWM_Controller(PCA9685):
                 self.update_Servo(i, self.FSave[i])  
                 
     def update_app (self, chan, remote_inp):
-        if ((not SIM) and (remote_inp == 0)):
+        if (remote_inp == 0):
             self.fail_safe()
             print ("shutdown")
             time.sleep(1)
-            os.system("sudo shutdown now")                                    
+            if (not SIM):
+                os.system("sudo shutdown now")                                    
                                
     def update_L298(self, chan, remote_inp):
         self.set_pwm(chan, 0, self.imp_tab[chan][remote_inp])
@@ -222,7 +225,8 @@ class PWM_Controller(PCA9685):
         hdr = 127 : trimming
         hdr = 255 : servo values            
         '''
-        self.rtime = time.time()
+        if not q.full(): 
+            q.put(time.time(), block=False)
         i = 0 
         for i in range (len(msg)//3) :
             hdr = msg[i*3 + 0]      
@@ -246,66 +250,72 @@ class Observer(Thread):
         Thread.__init__(self)
         self.SC = SC
         self.tout = tel_time_out
-        self.tshutdn = tel_time_out * 10.0
+        self.tshutdn = tel_time_out * 5.0
+        self.observed_time = time.time()
         self.ID = ID
-        self.start()
+        #self.start()
 
     def run(self):       
         while True:
-            if ((time.time() - self.SC.get_rtime()) > self.tout):
+            if not q.empty():
+                self.observed_time = q.get()  # last time enty
+            while not q.empty():
+                temp = q.get()
+                #print ("queue ", q.qsize())
+            if ((time.time() - self.observed_time) > self.tout):
                 self.SC.fail_safe()
-                if ((time.time() - self.SC.get_rtime()) > self.tshutdn):
-                    #print ('exit' + str(os.getpid()))
+                print ("Fail Save after Timeout")
+                if ((time.time() - self.observed_time) > self.tshutdn):
                     if SIM:
-                        os.system("sudo kill " + str(os.getpid()))
+                        print ("Reset requiered")
                     else:
-                        # better rebooting
                         os.system("sudo reboot")
-            time.sleep(1)  
+            print("Observer running  :"  , self.observed_time, "  " , time.time())
+            time.sleep(1.0)  
 
- 
-class UDP_Client(Thread):
+class UDP_Client():    
     """  Simple UDP receiver with telegramm decoding
     
     """ 
     def __init__(self, controller, IP, port_tx, port_rx, tbroadcast, ID):
-        Thread.__init__(self)
+        #Thread.__init__(self)
         self.controller = controller
         self.ID = ID
         self.tbc = tbroadcast
         self.port_tx = port_tx
         self.port_rx = port_rx
+        self.tout = 3.0
         self.bc_address = (Utility.get_bc_address('wlan0'), self.port_tx)
-        self.bc_data = self.ID + '@' + Utility.get_ip_address('wlan0')
+        self.bc_data = (self.ID + '@' + Utility.get_ip_address('wlan0')).encode('utf-8')
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         self.client_address = (IP, port_rx)
         self.sock.bind(self.client_address)
-        self.msCyclTime = int(round(time.time() * 1000))
+        self.bcTime = time.time()
         for i in range(self.tbc):
              sent = self.sock.sendto(self.bc_data, self.bc_address)        
              time.sleep(0.1)                       
-        self.start()          
+  
 
     def run(self):  
         print ("Start UDP")
         while True:
-            if ((int(round(time.time() * 1000)) - self.msCyclTime) > 1000):
-                self.msCyclTime = int(round(time.time() * 1000))
+            if ((time.time() - self.bcTime) > 1.0):
+                self.bcTime = time.time() 
                 try: 
                     sent = self.sock.sendto(self.bc_data, self.bc_address)
                     print ('broadcast', self.bc_data)                   
                 except:
                     print ("Network not available - shutdown")
-                    os.system("sudo shutdown ")
+                    
             data , address = self.sock.recvfrom(1024)
-            print (data)
+            data = data.decode('utf-8')
             if data:
                 try:
-                    #print ('adresse Sender :' , address[0], self.port_tx)
+                    msg = self.decode_Tel(data)
+                    print (data," ",  address[0], " ", self.port_tx)
                     self.bc_address = (address[0], self.port_tx)
-                    msg = self.decode_Tel(data) 
-                    self.update_controller(msg)                
+                    self.update_controller(msg) 
                 except:
                     msg = [] 
                     
