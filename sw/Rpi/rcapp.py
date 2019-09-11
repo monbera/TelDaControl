@@ -3,7 +3,7 @@
 #-------------------------------------------------------------------------------
 # Name:        Remote Control Receiver 
 # Purpose:     Receiving remote control commands, controlling 
-#              seros, H-Bridges and digital outputs using a PCA9685 board     
+#              servos, H-Bridges and digital outputs using a PCA9685 board     
 # Author:      Bernd Hinze
 #
 # Created:     30.04.2019
@@ -16,10 +16,33 @@ import socket
 import time
 import os
 import queue
+import logging
 from threading import Thread
 from pca9685 import PCA9685, SIM   # PWM Board Package
 
 q = queue.LifoQueue(100)
+if not SIM: 
+    logfolder = '/home/pi/prj/tmp'
+else:
+    logfolder = os.getcwd() + '/tmp'
+lfprefix = 'rc_rec'
+if not os.access(logfolder, os.F_OK):
+    os.mkdir(logfolder, 0o766)
+boottime = time.strftime('%d%m%y_%X')
+logfname = logfolder +'/' + lfprefix + '_' + str(boottime) + '.log'
+log = logging.getLogger(__name__)
+log.setLevel(logging.INFO)
+fh = logging.FileHandler(logfname, 'w')
+formatter = logging.Formatter('%(asctime)s %(message)s')
+fh.setFormatter(formatter)
+log.addHandler(fh)
+
+if SIM: 
+    ch = logging.StreamHandler() 
+    ch.setFormatter(formatter)
+    log.addHandler(ch)
+
+log.info("Start Script rcapp.py")
 
 class Utility(): 
     ''' Static methods to get IP-adresses
@@ -34,10 +57,35 @@ class Utility():
         ip = Utility.get_ip_address(ifname).split('.')
         bcip = ip[0] + '.' + ip[1] + '.' + ip[2] + '.' + '255'
         return bcip
-           
+               
+    def del_files(folder , fileprfix, cnt_reamin):
+        ''' 
+        deletes all old files in a directory with a special prefix 
+        so that an amount of newer files remains given with the parameter
+        '''
+        if not os.access(folder , os.F_OK):
+            log.debug ('Folder not found')
+        else:
+            filelist = os.listdir(folder)            
+            filetime = []
+            if (len(filelist) > cnt_reamin):
+                slicer =  (len(filelist)) - cnt_reamin
+            else:
+                slicer = 0
+            for file in filelist:
+                t = int(os.stat(folder + '//' + file).st_atime)
+                filetime.append(t)
+            filetime.sort() 
+            for file in filelist:
+                t = int(os.stat(folder + '//' + file).st_atime)
+                if t in (filetime[:slicer]): 
+                    if (fileprfix == file[0:len(fileprfix)]):
+                        os.remove(folder + '//' + file)       
+
+
     get_ip_address = staticmethod(get_ip_address)
     get_bc_address = staticmethod(get_bc_address)
-
+    del_files = staticmethod(del_files)
 
 class PWM_Controller(PCA9685):
     ''' Extends the PCA9685 class with a user specific API.
@@ -132,7 +180,7 @@ class PWM_Controller(PCA9685):
                 self.imp_tab[ch][i]=(int((self.ChTidef[self.ix_diff][ch] * i/254) \
                         + self.ChTidef[self.ix_min][ch]))
 
-    # ch: channel, fval = Thresshold 0..100 not used
+    # ch: channel, fval = Thresshold 0..100 
     def adjust_threshold (self, ch, fval):
         ndiff =(self.ChTidef[self.ix_diff][ch] * fval/100.0)
         nmin = ((self.ChTidef[self.ix_min][ch]  \
@@ -183,7 +231,7 @@ class PWM_Controller(PCA9685):
     def update_app (self, chan, remote_inp):
         if (remote_inp == 0):
             self.fail_safe()
-            print ("shutdown")
+            log.info("Shutdown by command")
             time.sleep(1)
             if (not SIM):
                 os.system("sudo shutdown now")                                    
@@ -216,28 +264,28 @@ class PWM_Controller(PCA9685):
         elif (chan in self.L298Chs):    
             self.update_L298(chan, inp)
         else: 
-            self.update_Servo(chan, inp)
-            
-    def update(self, msg):
+            self.update_Servo(chan, inp)            
+                
+    def update(self, msg):  
         ''' Interface for the UDP-client 
-        
-        hdr = 100 : update_app 
-        hdr = 127 : trimming
-        hdr = 255 : servo values            
+        hdr = 100 : update_app | hdr = 127 : trimming |hdr = 255 : servo values            
+        hdr = 105 : setting limited rate  
         '''
         if not q.full(): 
             q.put(time.time(), block=False)
-        i = 0 
-        for i in range (len(msg)//3) :
-            hdr = msg[i*3 + 0]      
-            ch = msg[i*3 + 1]
-            val = msg[i*3 + 2]
+        cntloop = len(msg)//3
+        for i in range(cntloop): 
+            hdr = msg[i*3]
+            y = i*3
             if (hdr == 255):
-                self.update_ch(ch, val)
-            elif(hdr == 127):
-                self.trimm_chan(ch, val)
+                self.update_ch(msg[y+1], msg[y+2])           
+            elif (hdr == 127):
+                self.trimm_chan(msg[y+1], msg[y+2])
             elif (hdr == 100):
-                self.update_app(ch, val)  
+                self.update_app(msg[y+1], msg[y+2])
+            elif (hdr == 105):
+                self.adjust_threshold(msg[y+1], msg[y+2])
+                
 
 class Observer(Thread):
     ''' Timeout supervision of receiving telegrams.
@@ -246,31 +294,30 @@ class Observer(Thread):
     different actions are possible to define. 
     '''
     
-    def __init__(self, SC, tel_time_out, ID):
+    def __init__(self, SC, tel_time_out):
         Thread.__init__(self)
         self.SC = SC
         self.tout = tel_time_out
         self.tshutdn = tel_time_out * 5.0
         self.observed_time = time.time()
-        self.ID = ID
-        #self.start()
 
-    def run(self):       
+    def run(self):  
+        time.sleep(5.0)
         while True:
             if not q.empty():
                 self.observed_time = q.get()  # last time enty
             while not q.empty():
                 temp = q.get()
-                #print ("queue ", q.qsize())
+                log.debug("queue " + str(q.qsize()))
             if ((time.time() - self.observed_time) > self.tout):
                 self.SC.fail_safe()
-                print ("Fail Save after Timeout")
+                log.info ("Fail Save after Timeout")
                 if ((time.time() - self.observed_time) > self.tshutdn):
                     if SIM:
-                        print ("Reset requiered")
+                        log.info ("Reset requiered")
                     else:
                         os.system("sudo reboot")
-            print("Observer running  :"  , self.observed_time, "  " , time.time())
+            log.info("Observer running")
             time.sleep(1.0)  
 
 class UDP_Client():    
@@ -298,22 +345,22 @@ class UDP_Client():
   
 
     def run(self):  
-        print ("Start UDP")
+        log.info ("Start UDP")
         while True:
             if ((time.time() - self.bcTime) > 1.0):
                 self.bcTime = time.time() 
                 try: 
                     sent = self.sock.sendto(self.bc_data, self.bc_address)
-                    print ('broadcast', self.bc_data)                   
+                    log.debug ("broadcast" + str(self.bc_data))                   
                 except:
-                    print ("Network not available - shutdown")
+                    log.info ("Network not available - shutdown")
                     
             data , address = self.sock.recvfrom(1024)
             data = data.decode('utf-8')
             if data:
                 try:
                     msg = self.decode_Tel(data)
-                    print (data," ",  address[0], " ", self.port_tx)
+                    log.debug (str(data))
                     self.bc_address = (address[0], self.port_tx)
                     self.update_controller(msg) 
                 except:
@@ -339,7 +386,7 @@ class UDP_Client():
 
 def main():
     # Configuration of the model is made in rcmain 
-    pass        
+    pass       
 
 if __name__ == '__main__':
     main()
